@@ -35,9 +35,8 @@ class Review {
 	 * @since 2.1.0
 	 */
 	public function hooks() {
-
 		add_action( 'admin_init', [ $this, 'admin_notices' ] );
-		add_action( 'wp_ajax_wp_mail_smtp_review_dismiss', array( $this, 'review_dismiss' ) );
+		add_action( 'wp_ajax_wp_mail_smtp_review_dismiss', [ $this, 'review_dismiss' ] );
 	}
 
 	/**
@@ -49,7 +48,6 @@ class Review {
 	 * @return void
 	 */
 	public function admin_notices() { // phpcs:ignore WPForms.PHP.HooksMethod.InvalidPlaceForAddingHooks
-
 		if ( is_multisite() ) {
 			add_action( 'network_admin_notices', [ $this, 'review_request' ] );
 		} else {
@@ -92,16 +90,53 @@ class Review {
 			return;
 		}
 
-		$this->review();
+		// Check if it's a multisite installation.
+		if ( is_multisite() ) {
+			$this->review_multisite();
+		} else {
+			$this->review();
+		}
 	}
 
 	/**
-	 * Maybe show review request.
-	 *
-	 * @since 2.1.0
+	 * Handle review request for multisite efficiently.
+	 */
+	private function review_multisite() {
+		// Fetch when plugin was initially activated.
+		$activated = get_option( 'wp_mail_smtp_activated_time' );
+
+		// Skip if the plugin activated time is not set or wait period has not passed.
+		if ( empty( $activated ) || ( $activated + ( DAY_IN_SECONDS * self::WAIT_PERIOD ) ) > time() ) {
+			return;
+		}
+
+		// Get the currently selected mailer.
+		$mailer = Options::init()->get( 'mail', 'mailer' );
+
+		// Skip if no or the default mailer is selected.
+		if ( empty( $mailer ) || $mailer === 'mail' ) {
+			return;
+		}
+
+		$mailer_object = wp_mail_smtp()
+			->get_providers()
+			->get_mailer( $mailer, wp_mail_smtp()->get_processor()->get_phpmailer() );
+
+		// Check if mailer setup is complete.
+		$mailer_setup_complete = ! empty( $mailer_object ) ? $mailer_object->is_mailer_complete() : false;
+
+		if ( ! $mailer_setup_complete ) {
+			return;
+		}
+
+		// Output review message.
+		$this->output_review_message();
+	}
+
+	/**
+	 * Handle review request for single site.
 	 */
 	private function review() {
-
 		// Get the currently selected mailer.
 		$mailer = Options::init()->get( 'mail', 'mailer' );
 
@@ -113,8 +148,8 @@ class Review {
 		// Fetch when plugin was initially activated.
 		$activated = get_option( 'wp_mail_smtp_activated_time' );
 
-		// Skip if the plugin activated time is not set.
-		if ( empty( $activated ) ) {
+		// Skip if the plugin activated time is not set or the plugin is active for less than the wait period.
+		if ( empty( $activated ) || ( $activated + ( DAY_IN_SECONDS * self::WAIT_PERIOD ) ) > time() ) {
 			return;
 		}
 
@@ -125,12 +160,18 @@ class Review {
 		// Check if mailer setup is complete.
 		$mailer_setup_complete = ! empty( $mailer_object ) ? $mailer_object->is_mailer_complete() : false;
 
-		// Skip if the mailer is not set or the plugin is active for less then a defined number of days.
-		if ( ! $mailer_setup_complete || ( $activated + ( DAY_IN_SECONDS * self::WAIT_PERIOD ) ) > time() ) {
+		if ( ! $mailer_setup_complete ) {
 			return;
 		}
 
-		// We have a candidate! Output a review message.
+		// Output review message.
+		$this->output_review_message();
+	}
+
+	/**
+	 * Output the review message HTML.
+	 */
+	private function output_review_message() {
 		?>
 		<div class="notice notice-info is-dismissible wp-mail-smtp-review-notice">
 			<div class="wp-mail-smtp-review-step wp-mail-smtp-review-step-1">
@@ -146,7 +187,6 @@ class Review {
 					<?php
 					printf(
 						'<a href="%1$s" class="wp-mail-smtp-dismiss-review-notice wp-mail-smtp-review-out" target="_blank" rel="noopener noreferrer">%2$s</a>',
-						// phpcs:ignore WordPress.Arrays.ArrayDeclarationSpacing.AssociativeArrayFound
 						esc_url( wp_mail_smtp()->get_utm_url( 'https://wpmailsmtp.com/plugin-feedback/', [ 'medium' => 'review-notice', 'content' => 'Provide Feedback' ] ) ),
 						esc_html__( 'Provide Feedback', 'wp-mail-smtp' )
 					);
