@@ -1,5 +1,31 @@
 {
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
+  "version": 2,
+  "builds": [
+    {
+      "src": "wp-content/themes/**",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wp-content/plugins/**",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "wp-content/uploads/**",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "index.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "404.html",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
   ]
 }
